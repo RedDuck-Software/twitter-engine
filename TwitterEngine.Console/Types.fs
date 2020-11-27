@@ -22,3 +22,7 @@ type AccountRequest =
 type IdentityMessage = 
 | Signup of Credentials
 | AccountRequest of AccountRequest
+
+type OperationStatusResponse = 
+| Success
+| Error of string
