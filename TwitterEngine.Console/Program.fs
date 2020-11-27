@@ -16,25 +16,43 @@ let setupLogging () =
     let sessionId = DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds().ToString()
     let logFile = sprintf "logs-%s.json" sessionId
     let filePath = Path.Combine(logDirectory, logFile)
-    File.Create(filePath).Dispose() |> ignore
+    File.Create(filePath).Dispose()
 
     let log = (((LoggerConfiguration()).MinimumLevel.Debug()).WriteTo).File(filePath).CreateLogger()
     Serilog.Log.Logger <- log
 
     sessionId
 
+let signUpAndSubscribeUser tweetSenderName userName superviserActorRef =
+    superviserActorRef <! Signup({username = userName; password = "123456b"})
+    superviserActorRef <! UserRequest(Login("123456b"), userName)
+    superviserActorRef <! Subscribe(Author(tweetSenderName), userName)
 
 [<EntryPoint>]
 let main argv =
+    use system = System.create "my-system" <| Configuration.load()
     let sessionId = setupLogging ()
 
-    use system = System.create "my-system" <| Configuration.defaultConfig()
-    let identityActorRef = spawnAnonymous system <| props(RegisterAccount.identityActor)
+    let sender = "D.Trump"
+    let recepient1 = "Anton"
+    let recepient2 = "Vitaly"
+    let recepient3 = "George"
+    let recepient4 = "John"
 
-    identityActorRef <! AccountRequest(Login({ username = "MarkV"; password = "123456b" }))
-    identityActorRef <! Signup({ username = "MarkV"; password = "123456b" })
-    identityActorRef <! AccountRequest(Login({ username = "MarkV"; password = "123456b" }))
-    identityActorRef <! Signup({ username = "MarkV"; password = "123456b" })
+    // todo rename to supervisOr
+    let superviserActorRef = spawnAnonymous system <| props(RegisterAccount.superviserActor)
 
-    Console.ReadLine ()
+    superviserActorRef <! Signup({ username = sender; password = "123456b" })
+    superviserActorRef <! UserRequest(Login("123456b"), sender)
+
+    signUpAndSubscribeUser sender recepient1 superviserActorRef
+    signUpAndSubscribeUser sender recepient2 superviserActorRef
+    signUpAndSubscribeUser sender recepient3 superviserActorRef
+    signUpAndSubscribeUser sender recepient4 superviserActorRef
+    
+    System.Threading.Thread.Sleep(2500) // allow the above to be completed
+
+    superviserActorRef <! UserRequest(SendTweet("Akka-Akka. Akka47. Oh shit man, goddamn!"), sender)
+
+    Console.ReadLine () |> ignore
     0 // return an integer exit code

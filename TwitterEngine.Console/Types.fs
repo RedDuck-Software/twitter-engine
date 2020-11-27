@@ -1,5 +1,7 @@
 ﻿namespace TwitterEngine.Types
 
+open Akkling
+
 type AccountCredentials = {
     username : string;
     passwordHash : byte[];
@@ -16,12 +18,30 @@ type Credentials = {
     password : string;
 }
 
-type AccountRequest = 
-| Login of Credentials
+type Tweet = {
+    data : string;
+    author : Account // todo account includes credentials is it needed? revise data structures
+}
 
-type IdentityMessage = 
+type TweetSubscription =
+| Hashtag of string
+| Mention of string
+| Author of username: string
+
+type UserRequest = 
+| Login of password : string
+| SendTweet of string
+| ReceivedTweet of (Tweet * TweetSubscription)
+
+type SubscriptionActorRequest = 
+| NewSubscription of IActorRef<UserRequest>
+| Tweet of Tweet
+
+type SuperviserRequest = 
 | Signup of Credentials
-| AccountRequest of AccountRequest
+| UserRequest of (UserRequest * string)
+| Subscribe of (TweetSubscription * string)
+| Tweet of Tweet
 
 type OperationStatusResponse = 
 | Success
