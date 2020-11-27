@@ -26,7 +26,7 @@ let setupLogging () =
 let signUpAndSubscribeUser tweetSenderName userName superviserActorRef =
     superviserActorRef <! Signup({username = userName; password = "123456b"})
     superviserActorRef <! UserRequest(Login("123456b"), userName)
-    superviserActorRef <! Subscribe(Author(tweetSenderName), userName)
+    superviserActorRef <! Subscribe(Sender(tweetSenderName), userName)
 
 [<EntryPoint>]
 let main argv =
@@ -46,13 +46,17 @@ let main argv =
     superviserActorRef <! UserRequest(Login("123456b"), sender)
 
     signUpAndSubscribeUser sender recepient1 superviserActorRef
-    signUpAndSubscribeUser sender recepient2 superviserActorRef
-    signUpAndSubscribeUser sender recepient3 superviserActorRef
-    signUpAndSubscribeUser sender recepient4 superviserActorRef
-    
+    signUpAndSubscribeUser recepient1 recepient2 superviserActorRef
+    signUpAndSubscribeUser recepient2 recepient3 superviserActorRef
+    signUpAndSubscribeUser recepient3 recepient4 superviserActorRef
+   
     System.Threading.Thread.Sleep(2500) // allow the above to be completed
 
     superviserActorRef <! UserRequest(SendTweet("Akka-Akka. Akka47. Oh shit man, goddamn!"), sender)
+
+    System.Threading.Thread.Sleep(2000)
+
+    superviserActorRef <! LoadHistoricalTweets(Sender(recepient3), recepient2)
 
     Console.ReadLine () |> ignore
     0 // return an integer exit code

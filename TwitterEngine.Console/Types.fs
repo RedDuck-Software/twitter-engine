@@ -21,20 +21,23 @@ type Credentials = {
 type Tweet = {
     data : string;
     author : Account // todo account includes credentials is it needed? revise data structures
+    sender : Account
 }
 
 type TweetSubscription =
 | Hashtag of string
 | Mention of string
-| Author of username: string
+| Sender of username: string
 
 type UserRequest = 
 | Login of password : string
 | SendTweet of string
+| ForwardTweet of Tweet
 | ReceivedTweet of (Tweet * TweetSubscription)
 
 type SubscriptionActorRequest = 
 | NewSubscription of IActorRef<UserRequest>
+| LoadHistoricalTweets of IActorRef<UserRequest>
 | Tweet of Tweet
 
 type SuperviserRequest = 
@@ -42,6 +45,7 @@ type SuperviserRequest =
 | UserRequest of (UserRequest * string)
 | Subscribe of (TweetSubscription * string)
 | Tweet of Tweet
+| LoadHistoricalTweets of (TweetSubscription * string)
 
 type OperationStatusResponse = 
 | Success

@@ -32,51 +32,65 @@ module RegisterAccount =
         { account with isLoggedIn = account.credentials.passwordHash = getHash account.credentials.salt password } // todo here incorrect comparison
 
     let userActor account (mailBox:Actor<UserRequest>) =
-        let rec impl account = actor {
+        let rec impl (account, sentTweets) = actor {
             let! data = mailBox.Receive()
             
-            let account =
+            let account, sentTweets =
                 match data with
-                | Login pwd -> login account pwd
+                | Login pwd -> 
+                    printfn "logged in %s" account.credentials.username
+                    login account pwd, sentTweets
                 | SendTweet data ->
-
-                    let tweet = { data = data; author = account }
-
+                    let tweet = { data = data; author = account; sender = account }
                     mailBox.Parent() <! Tweet(tweet)
-
-                    account
-                | ReceivedTweet (tweet, subscription) -> 
+                    account, tweet::sentTweets
+                | ForwardTweet tweet ->
+                    let tweet = { tweet with sender = account }
+                    if not <| List.contains tweet sentTweets 
+                        then
+                            mailBox.Parent() <! Tweet(tweet)
+                            account, tweet::sentTweets
+                        else
+                            account, sentTweets
+                | ReceivedTweet (tweet, subscription) ->
                     let str = sprintf "Account %s received tweet %s from %s based on subscription %A" account.credentials.username tweet.data tweet.author.credentials.username subscription
                     System.Console.WriteLine str // printfn does not always add a new line ? O_o
-                    account
+                    mailBox.Self <! ForwardTweet(tweet)
+                    account, sentTweets
 
-            printfn "logged in %s" account.credentials.username
-
-            return! impl account
+            return! impl (account, sentTweets)
         }
-        impl { credentials = account; isLoggedIn = false; }
+        impl ({ credentials = account; isLoggedIn = false; }, [])
 
     let subscriptionToActorName subscription = 
         match subscription with 
         | Hashtag a -> sprintf "tag-%s" a
         | Mention a -> sprintf "mention-%s" a
-        | Author a -> sprintf "author-%s" a
+        | Sender a -> sprintf "sender-%s" a
 
     let subscriptionActor subscription (mailBox:Actor<SubscriptionActorRequest>) = 
-        let rec impl subscribers = actor {
+        let rec impl (subscribers, tweets) = actor {
             let! data = mailBox.Receive()
 
-            let subscribers = 
+            let (subscribers, tweets) = 
                 match data with 
-                | NewSubscription user -> user :: subscribers
+                | NewSubscription userRef ->
+                    if not <| List.contains userRef subscribers 
+                        then userRef :: subscribers, tweets
+                        else subscribers, tweets
                 | SubscriptionActorRequest.Tweet tweet -> 
                     let userRequest = ReceivedTweet (tweet, subscription)
                     List.iter (fun i -> i <! userRequest) subscribers
-                    subscribers
+                    (subscribers, tweet::tweets)
+                | SubscriptionActorRequest.LoadHistoricalTweets userRef ->                     
+                    for tweet in tweets do
+                        userRef <! ReceivedTweet(tweet, subscription)
                     
-            return! impl subscribers
+                    (subscribers, tweets)
+                                        
+            return! impl (subscribers, tweets)
         }
-        impl []
+        impl ([], [])
 
     let superviserActor (mailBox:Actor<SuperviserRequest>) = 
         let rec impl () = actor {
@@ -94,9 +108,8 @@ module RegisterAccount =
             | UserRequest (request, username) ->
                     let childActorRef = typed <| mailBox.UntypedContext.Child(username)
                     childActorRef <! request // what if nobody?
-                    printfn "Logged in, childActor: %A" childActorRef
                     ()
-            | Subscribe (subscription, username) -> 
+            | Subscribe (subscription, username) | LoadHistoricalTweets (subscription, username) -> 
                 let userActorRef = typed <| mailBox.UntypedContext.Child(username)
                 let actorName = subscriptionToActorName subscription
                 let subscriptionActorRef = mailBox.UntypedContext.Child(actorName)
@@ -108,19 +121,22 @@ module RegisterAccount =
                     | _ -> typed subscriptionActorRef
 
                 subscriptionActorRef <! NewSubscription(userActorRef)
+
+                match data with 
+                | LoadHistoricalTweets _ -> subscriptionActorRef <! SubscriptionActorRequest.LoadHistoricalTweets(userActorRef)
+                | _ -> ()
                 ()
             | Tweet tweet ->
                 let subscriptions = seq {
                     yield! extractHashes tweet.data;
                     yield! extractUserNames tweet.data;
-                    yield Author tweet.author.credentials.username
+                    yield Sender tweet.sender.credentials.username
                 }
 
                 for subscription in subscriptions do
                     let actorName = subscriptionToActorName subscription
                     let actorRef = mailBox.UntypedContext.Child(actorName) |> typed
                     actorRef <! SubscriptionActorRequest.Tweet(tweet)
-
             return! impl ()
         }
         impl ()
