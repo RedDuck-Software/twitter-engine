@@ -8,43 +8,55 @@ module Actors =
     let userActor (client:IActorRef<ClientUserActorMessage>) account (mailBox:Actor<UserRequest>) =
         let rec impl (account, knownTweets) = actor {
             let! data = mailBox.Receive()
-            let account, sentTweets =
-                match data with
-                | Login pwd -> 
-                    printfn "logged in %s" account.credentials.username
-                    client <! OperationResult(Success)
-                    Helpers.login account pwd, knownTweets // fix login
-                | SendTweet data ->
-                    let tweet = { id = (Guid.NewGuid()); data = data; author = account; sender = account; }
-                    mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
-                    client <! OperationResult(Success)
-                    account, tweet::knownTweets
-                | ForwardTweet id ->
-                    let tweet = List.tryFind (fun i -> i.id = id) knownTweets
-                    match tweet with
-                    | Some tweet -> 
-                        let tweet = { tweet with sender = account }
-                        if not <| List.contains tweet knownTweets
-                            then
-                                mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
-                                client <! OperationResult(Success)
-                                account, tweet::knownTweets
-                            else
-                                client <! OperationResult(Error("Tweet has already been forwarded"))
-                                account, knownTweets
-                    | None ->
-                        client <! OperationResult(Error(sprintf "Unknown tweet id: %O" id))
-                        account, knownTweets
-                | UserRequest.Subscription subscription ->
-                    printfn "subscribing"
-                    mailBox.Parent() <! SuperviserRequest.Subscription(subscription)
-                    account, knownTweets
-                | UserRequest.ReceivedTweet data ->
-                    client <! ReceivedTweet(data)
-                    let (tweet, _) = data
-                    account, tweet::knownTweets
+           
+            let isAccessAllowed = 
+                match data with 
+                | SendTweet _ | ForwardTweet _ | UserRequest.Subscription _ -> account.isLoggedIn && client = mailBox.Sender()
+                | Login _ -> client = mailBox.Sender()
+                | _ -> true
 
-            return! impl (account, sentTweets)
+            if not isAccessAllowed 
+                then 
+                    return! impl (account, knownTweets)
+                else
+                    return! impl <|
+                        match data with
+                        | Login pwd -> 
+                            printfn "logged in %s" account.credentials.username
+                            let account = Helpers.login account pwd
+                            
+                            let response = if account.isLoggedIn then Success else Error("invalid password")
+                            client <! OperationResult(response)
+                            account, knownTweets
+                        | SendTweet data ->
+                            let tweet = { id = (Guid.NewGuid()); data = data; author = account; sender = account; }
+                            mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
+                            client <! OperationResult(Success)
+                            account, tweet::knownTweets
+                        | ForwardTweet id ->
+                            let tweet = List.tryFind (fun i -> i.id = id) knownTweets
+                            match tweet with
+                            | Some tweet -> 
+                                let tweet = { tweet with sender = account }
+                                if not <| List.contains tweet knownTweets
+                                    then
+                                        mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
+                                        client <! OperationResult(Success)
+                                        account, tweet::knownTweets
+                                    else
+                                        client <! OperationResult(Error("Tweet has already been forwarded"))
+                                        account, knownTweets
+                            | None ->
+                                client <! OperationResult(Error(sprintf "Unknown tweet id: %O" id))
+                                account, knownTweets
+                        | UserRequest.Subscription subscription ->
+                            printfn "subscribing"
+                            mailBox.Parent() <! SuperviserRequest.Subscription(subscription)
+                            account, knownTweets
+                        | UserRequest.ReceivedTweet data ->
+                            client <! ReceivedTweet(data)
+                            let (tweet, _) = data
+                            account, tweet::knownTweets
         }
         impl ({ credentials = account; isLoggedIn = false; }, [])
     let subscriptionActor subscription (mailBox:Actor<SubscriptionActorRequest>) = 
