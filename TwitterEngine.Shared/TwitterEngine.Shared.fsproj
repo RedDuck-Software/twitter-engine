@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Constants.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="Helpers.fs" />
+    <Compile Include="Actors.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Akkling" Version="0.10.0" />
+  </ItemGroup>
+
+</Project>

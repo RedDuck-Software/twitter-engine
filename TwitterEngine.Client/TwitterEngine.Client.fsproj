@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Akka.Remote" Version="1.4.12" />
+    <PackageReference Include="Akka.Serialization.Hyperion" Version="1.4.12" />
+    <PackageReference Include="Akkling" Version="0.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TwitterEngine.Shared\TwitterEngine.Shared.fsproj" />
+  </ItemGroup>
+
+</Project>
