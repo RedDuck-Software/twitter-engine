@@ -23,8 +23,11 @@ let signup credentials =
     let account = { username = credentials.username; salt = salt; passwordHash = hash; }
     account
 
-let login account password = 
-    { account with isLoggedIn = account.credentials.passwordHash = getHash account.credentials.salt password } // todo here incorrect comparison
+let login account password =
+    let expectedHash = account.credentials.passwordHash
+    let actualHash = getHash account.credentials.salt password
+    let isEqual = Array.compareWith (fun a b -> int (a - b)) expectedHash actualHash = 0
+    { account with isLoggedIn = isEqual }
 
 let extractSpecials specialChar (str:string) =
     str.Split([|' '|], StringSplitOptions.RemoveEmptyEntries)
