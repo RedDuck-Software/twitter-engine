@@ -24,10 +24,11 @@ App logs server-side logs to $Temp/TwitterEngine.Server folder, the latest logs 
 You can specify app startup arguments, or use default ones. If you don't specify some startup arguments, the rest of the arguments will default.
 
 The arguments are:
-0. int - num of users; default - 100.000. - Note - this can handle 700.000 on my laptop
-1. float - connection time minutes - this is how long users will be sending messages - defaults to 2.0.
-2. int - max count of hashtags to be sent via one message, default - 15
-3. int - max count of mentions to be sent via one message, default - 15
-4. int - the point when the user will be considered to have "a lot of subscribers". The default is 50
-5. int - time in miliseconds for which thread will be going to sleep while waiting for an operation to complete (such as logging in, signing up etc)
-6. bool - value indicating if the verbose logging is enabled; default - false 
+
+1. int - num of users; default - 100.000. - Note - this can handle 700.000 on my laptop
+2. float - connection time minutes - this is how long users will be sending messages - defaults to 2.0.
+3. int - max count of hashtags to be sent via one message, default - 15
+4. int - max count of mentions to be sent via one message, default - 15
+5. int - the point when the user will be considered to have "a lot of subscribers". The default is 50
+6. int - time in miliseconds for which thread will be going to sleep while waiting for an operation to complete (such as logging in, signing up etc)
+7. bool - value indicating if the verbose logging is enabled; default - false 
