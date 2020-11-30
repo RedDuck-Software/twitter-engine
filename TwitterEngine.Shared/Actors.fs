@@ -50,8 +50,8 @@ module Actors =
                                 client <! OperationResult(Error(sprintf "Unknown tweet id: %O" id))
                                 account, knownTweets
                         | UserRequest.Subscription subscription ->
-                            printfn "subscribing"
                             mailBox.Parent() <! SuperviserRequest.Subscription(subscription)
+                            client <! OperationResult(Success)
                             account, knownTweets
                         | UserRequest.ReceivedTweet data ->
                             client <! ReceivedTweet(data)
