@@ -2,6 +2,7 @@
 
 open Akkling
 open System
+open WebSharper
 
 type AccountCredentials = {
     username : string;
@@ -12,11 +13,6 @@ type AccountCredentials = {
 type Account = {
     credentials : AccountCredentials;
     isLoggedIn : bool;
-}
-
-type Credentials = {
-    username : string;
-    password : string;
 }
 
 type Tweet = {
@@ -47,16 +43,26 @@ type UserRequest =
 | Subscription of (TweetSubscription * SubscriptionType)
 | ReceivedTweet of (Tweet * TweetSubscription)
 
-type ClientUserActorMessage =
+type ServerToClientResponse =
 | UserRef of IActorRef<UserRequest>
 | OperationResult of OperationStatusResponse
 | ReceivedTweet of (Tweet * TweetSubscription)
 | UserRequest of UserRequest
 
+type Credentials = {
+    username : string;
+    password : string;
+}
+
 type SuperviserRequest =
-| Signup of Credentials
+| Signup of (Credentials * (ServerToClientResponse -> unit))
+| UserRequest of (UserRequest * string)
 | Subscription of (TweetSubscription * SubscriptionType)
 | Tweet of Tweet
+
+type ClientToServerRequest =
+| Signup of Credentials
+| UserRequest of (UserRequest * string)
 
 type SubscriptionActorRequest =
 | Subscription of SubscriptionType
@@ -65,4 +71,18 @@ type SubscriptionActorRequest =
 type ClientUserState = {
     receivedTweets: Tweet list
     serverUserRef: UserRequest IActorRef Option
+}
+
+type
+    C2SMessage = ClientToServerRequest
+
+type
+    S2CMessage = ServerToClientResponse
+
+type ClientUserInfo = {
+    mutable subscribersNum: int;
+    receivedTweetIDs: Guid System.Collections.Generic.List;
+    mutable lastActivity: DateTime Option;
+    mutable activitiesCount: int;
+    mutable finishedActivities: int;
 }

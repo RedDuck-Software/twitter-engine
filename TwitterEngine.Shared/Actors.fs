@@ -3,17 +3,16 @@
 open Akkling
 open TwitterEngine.Shared.Types
 open System
+open WebSharper.AspNetCore.WebSocket.Server
 
 module Actors =
-    let userActor (client:IActorRef<ClientUserActorMessage>) account (mailBox:Actor<UserRequest>) =
+    let userActor sendToClient account (mailBox:Actor<UserRequest>) =
+        sendToClient <| UserRef(mailBox.Self)
+
         let rec impl (account, knownTweets) = actor {
             let! data = mailBox.Receive()
            
-            let isAccessAllowed = 
-                match data with 
-                | SendTweet _ | ForwardTweet _ | UserRequest.Subscription _ -> account.isLoggedIn && client = mailBox.Sender()
-                | Login _ -> client = mailBox.Sender()
-                | _ -> true
+            let isAccessAllowed = true
 
             if not isAccessAllowed 
                 then 
@@ -25,13 +24,14 @@ module Actors =
                             printfn "logged in %s" account.credentials.username
                             let account = Helpers.login account pwd
                             
-                            let response = if account.isLoggedIn then Success else Error("invalid password")
-                            client <! OperationResult(response)
+                            let response = if account.isLoggedIn then Success else OperationStatusResponse.Error("invalid password")                            
+                            sendToClient <| OperationResult(response)
+                            
                             account, knownTweets
                         | SendTweet data ->
                             let tweet = { id = (Guid.NewGuid()); data = data; author = account; sender = account; }
                             mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
-                            client <! OperationResult(Success)
+                            sendToClient <| OperationResult(Success)
                             account, tweet::knownTweets
                         | ForwardTweet id ->
                             let tweet = List.tryFind (fun i -> i.id = id) knownTweets
@@ -41,20 +41,20 @@ module Actors =
                                 if not <| List.contains tweet knownTweets
                                     then
                                         mailBox.Parent() <! SuperviserRequest.Tweet(tweet)
-                                        client <! OperationResult(Success)
+                                        sendToClient <| OperationResult(Success)
                                         account, tweet::knownTweets
                                     else
-                                        client <! OperationResult(Error("Tweet has already been forwarded"))
+                                        sendToClient <| OperationResult(OperationStatusResponse.Error("Tweet has already been forwarded"))
                                         account, knownTweets
                             | None ->
-                                client <! OperationResult(Error(sprintf "Unknown tweet id: %O" id))
+                                sendToClient <| OperationResult(OperationStatusResponse.Error(sprintf "Unknown tweet id: %O" id))
                                 account, knownTweets
                         | UserRequest.Subscription subscription ->
                             mailBox.Parent() <! SuperviserRequest.Subscription(subscription)
-                            client <! OperationResult(Success)
+                            sendToClient <| OperationResult(Success)
                             account, knownTweets
                         | UserRequest.ReceivedTweet data ->
-                            client <! ReceivedTweet(data)
+                            sendToClient <| ReceivedTweet(data)
                             let (tweet, _) = data
                             account, tweet::knownTweets
         }
@@ -101,17 +101,19 @@ module Actors =
             let! data = mailBox.Receive()
 
             match data with
-            | Signup creds ->
-                let sender = mailBox.Sender()
+            | SuperviserRequest.Signup (creds, sendToUser) ->
                 let userActor = 
                     match mailBox.UntypedContext.Child(creds.username) with
                     | :? Akka.Actor.Nobody ->
                         let account = Helpers.signup creds
-                        let userActor = userActor sender account |> props |> spawn mailBox account.username
+                        let userActor = userActor sendToUser account |> props |> spawn mailBox account.username
                         printfn "signed up %s" account.username
                         userActor
-                    | _ -> raise <| invalidOp("already signed up") // here if it's another clientUserRef might not work - but we dont need to so its fine
-                sender <! UserRef(userActor)
+                    | _ -> raise <| invalidOp("already signed up")
+                ()
+            | SuperviserRequest.UserRequest (ur, from) -> 
+                let userActor = typed <| mailBox.UntypedContext.Child(from)
+                userActor <! ur
             | SuperviserRequest.Subscription (sub, stype) -> 
                 (getSubscriptionActor sub) <<! Subscription(stype)
                 printfn "forwarding stype"
@@ -129,3 +131,48 @@ module Actors =
             return! impl ()
         }
         impl ()
+
+    let clientActor websocketUser logReceivedMessages (clientInfo:ClientUserInfo) username password remoteSupervisor (mailBox:Actor<ServerToClientResponse>) =
+        let log (txt:string) = if logReceivedMessages then Console.WriteLine(txt)
+
+        let addActivity clientInfo =
+            clientInfo.lastActivity <- Some DateTime.UtcNow
+            clientInfo.activitiesCount <- clientInfo.activitiesCount + 1
+        
+        let finishActivity info = info.finishedActivities <- info.finishedActivities + 1
+
+        remoteSupervisor <! Signup({username = username; password = password})
+        addActivity clientInfo
+        log "Told'em to sign-up"
+
+        let rec impl (userState:ClientUserState) = actor {
+            let! msg = mailBox.Receive()
+
+            let userState = 
+                match msg with
+                | UserRef ref ->
+                    finishActivity clientInfo
+                    { userState with serverUserRef = Some(ref) }
+                | OperationResult res ->
+                    match res with
+                    | Success -> log $"{username}: Successful operation"
+                    | OperationStatusResponse.Error a -> log $"{username}: Error operation, msg: {a}"
+                    finishActivity clientInfo
+                    userState
+                | ReceivedTweet (tweet, subscription) ->
+                    let str = sprintf "Account %s received tweet #%O \"%s\" from %s based on subscription %A" username tweet.id tweet.data tweet.author.credentials.username subscription
+                    log str
+                    clientInfo.receivedTweetIDs.Add(tweet.id)
+                    { userState with receivedTweets = tweet::userState.receivedTweets }
+                | ServerToClientResponse.UserRequest request -> 
+                    match userState.serverUserRef with 
+                    | Some ref -> 
+                        ref <! request
+                        addActivity clientInfo
+                    | None _ -> printfn "None ref !"
+                    userState
+
+            return! impl userState
+        }
+
+        impl { serverUserRef = None; receivedTweets = [] }

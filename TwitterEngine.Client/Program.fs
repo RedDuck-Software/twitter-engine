@@ -7,60 +7,6 @@ open TwitterEngine.Shared.Types
 
 let rnd = Random()
 
-type ClientUserInfo = {
-    mutable subscribersNum: int;
-    receivedTweetIDs: Guid System.Collections.Generic.List;
-    mutable lastActivity: DateTime Option ;
-    mutable activitiesCount: int;
-    mutable finishedActivities: int;
-}
-
-let addActivity clientInfo =
-    clientInfo.lastActivity <- Some DateTime.UtcNow
-    clientInfo.activitiesCount <- clientInfo.activitiesCount + 1
-
-let finishActivity info = info.finishedActivities <- info.finishedActivities + 1
-
-let clientActor logReceivedMessages (clientInfo:ClientUserInfo) username password remoteSupervisor (mailBox:Actor<ClientUserActorMessage>) =
-    let log (txt:string) = if logReceivedMessages then Console.WriteLine(txt)
-
-    remoteSupervisor <! Signup({username = username; password = password})
-    addActivity clientInfo
-    log "Told'em to sign-up"
-
-
-    let rec impl (userState:ClientUserState) = actor {
-        let! msg = mailBox.Receive()
-
-        let userState = 
-            match msg with
-            | UserRef ref ->
-                finishActivity clientInfo
-                { userState with serverUserRef = Some(ref) }
-            | OperationResult res ->
-                match res with 
-                | Success -> log $"{username}: Successful operation"
-                | Error a -> log $"{username}: Error operation, msg: {a}"
-                finishActivity clientInfo
-                userState
-            | ReceivedTweet (tweet, subscription) ->
-                let str = sprintf "Account %s received tweet #%O \"%s\" from %s based on subscription %A" username tweet.id tweet.data tweet.author.credentials.username subscription
-                log str
-                clientInfo.receivedTweetIDs.Add(tweet.id)
-                { userState with receivedTweets = tweet::userState.receivedTweets }
-            | UserRequest request -> 
-                match userState.serverUserRef with 
-                | Some ref -> 
-                    ref <! request
-                    addActivity clientInfo
-                | None _ -> printfn "None ref !"
-                userState
-
-        return! impl userState
-    }
-
-    impl { serverUserRef = None; receivedTweets = [] }
-
 let elementAtOrDefault (array:'a[]) indx def = if indx < array.Length then array.[indx] else def
 
 [<Literal>]
@@ -69,7 +15,7 @@ let userNameBeginning = "User"
 [<EntryPoint>]
 let main argv =
     let elementAtOrDefault = elementAtOrDefault argv
-    let users = elementAtOrDefault 0 "100000" |> int
+    let users = elementAtOrDefault 0 "1000000" |> int
     let connectionTimeMinutes = elementAtOrDefault 1 "2.0" |> float |> TimeSpan.FromMinutes
     let hashtagsCount = elementAtOrDefault 2 "15" |> int
     let mentionsCount = elementAtOrDefault 3 "15" |> int
