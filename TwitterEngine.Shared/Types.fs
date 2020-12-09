@@ -44,10 +44,8 @@ type UserRequest =
 | ReceivedTweet of (Tweet * TweetSubscription)
 
 type ServerToClientResponse =
-| UserRef of IActorRef<UserRequest>
 | OperationResult of OperationStatusResponse
 | ReceivedTweet of (Tweet * TweetSubscription)
-| UserRequest of UserRequest
 
 type Credentials = {
     username : string;
@@ -63,6 +61,7 @@ type SuperviserRequest =
 type ClientToServerRequest =
 | Signup of Credentials
 | UserRequest of (UserRequest * string)
+| TestRequest of string
 
 type SubscriptionActorRequest =
 | Subscription of SubscriptionType
@@ -73,10 +72,10 @@ type ClientUserState = {
     serverUserRef: UserRequest IActorRef Option
 }
 
-type
+type [<JavaScript>]
     C2SMessage = ClientToServerRequest
 
-type
+type [<JavaScript>]
     S2CMessage = ServerToClientResponse
 
 type ClientUserInfo = {

@@ -42,13 +42,15 @@ module Server =
                 dprintfn "Received message #%A from %s" msg clientIp
                 match msg with
                 | Message data ->
-                    let supervisorRequest =
-                        match data with 
-                        | Signup creds -> 
-                            SuperviserRequest.Signup (creds, client.PostAsync >> ignore)
-                        | UserRequest req -> 
-                            SuperviserRequest.UserRequest(req)
-                    supervisorActorRef <! supervisorRequest
+                    match data with 
+                    | Signup creds -> 
+                        let supervisorRequest = SuperviserRequest.Signup (creds, client.PostAsync >> ignore)
+                        supervisorActorRef <! supervisorRequest
+                    | UserRequest req -> 
+                        let supervisorRequest = SuperviserRequest.UserRequest(req)
+                        supervisorActorRef <! supervisorRequest
+                    | TestRequest test ->
+                        client.Post <| S2CMessage.OperationResult(OperationStatusResponse.Success)
                 | Message.Error a -> 
                     dprintfn "Exception occurred: %O" a
                 | Close -> 

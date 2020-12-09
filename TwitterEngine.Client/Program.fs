@@ -1,162 +1,46 @@
 ﻿// Learn more about F# at http://fsharp.org
 
 open System
-open Akkling
-open Akka.Actor
 open TwitterEngine.Shared.Types
+open WebSharper.AspNetCore.WebSocket
+open WebSharper.AspNetCore.WebSocket.Client
 
-let rnd = Random()
+let WebSocketClient (endpoint : WebSocketEndpoint<S2CMessage, C2SMessage>) =
+    async {
+        let! server =
+            Connect endpoint <| fun server -> async {
+                return fun msg ->
+                    match msg with
+                    | Message data ->
+                        match data with
+                        | OperationResult x -> printfn "Op result: %A" x
+                        | ReceivedTweet (tweet, subsc) -> printfn "Received tweet: %s" tweet.data
+                    | Close ->
+                        printfn "WebSocket connection closed."
+                    | Open ->
+                        printfn "WebSocket connection open."
+                    | Error ->
+                        printfn "WebSocket connection error!"
+            }
 
-let elementAtOrDefault (array:'a[]) indx def = if indx < array.Length then array.[indx] else def
-
-[<Literal>]
-let userNameBeginning = "User"
+        while true do
+            do! Async.Sleep 1000
+            server.Post (ClientToServerRequest.TestRequest("HELLO"))
+            do! Async.Sleep 1000
+            server.Post (ClientToServerRequest.TestRequest("123"))
+    }
+    |> Async.Start
+    
+let createEndpoint (url: string) : WebSharper.AspNetCore.WebSocket.WebSocketEndpoint<S2CMessage, C2SMessage> = 
+    WebSocketEndpoint.Create(url, "/ws", JsonEncoding.Readable)
 
 [<EntryPoint>]
 let main argv =
-    let elementAtOrDefault = elementAtOrDefault argv
-    let users = elementAtOrDefault 0 "1000000" |> int
-    let connectionTimeMinutes = elementAtOrDefault 1 "2.0" |> float |> TimeSpan.FromMinutes
-    let hashtagsCount = elementAtOrDefault 2 "15" |> int
-    let mentionsCount = elementAtOrDefault 3 "15" |> int
-    let subscribersCountReach = elementAtOrDefault 4 "50" |> int
-    let actionPause = elementAtOrDefault 5 "100" |> int
-    let logReceivedMessages = elementAtOrDefault 6 "false" |> bool.Parse
+    let endpoint = createEndpoint "ws://localhost:7703"
 
-    let hashtags = Array.init hashtagsCount (fun i -> sprintf "Hashtag%i" i)
-    
-    let getRndTag () = 
-        let hashTagIndx = rnd.Next(0, hashtagsCount)
-        hashtags.[hashTagIndx]
+    WebSocketClient endpoint
 
-    let getRndUser () =
-        let userIndx = rnd.Next(0, users)
-        sprintf "%s%i" userNameBeginning userIndx
+    printfn "Ready"
 
-    let getRandomTweetText () = 
-        let mentionsCount = rnd.Next(1, mentionsCount)
-        let hashtagsCount = rnd.Next(1, hashtagsCount / 2)
-        let mentions = Array.init mentionsCount (fun _ -> "@" + getRndUser())
-        let hashTags =  Array.init hashtagsCount (fun _ -> "#" + getRndTag())
-
-        let text = sprintf "Hashtags: %s | Mentions: %s" (String.Join(" ", hashTags)) (String.Join(" ", mentions))
-        text
-
-    let initWithBase baseNum count key = Array.init count (fun i -> (baseNum + i, key));
-
-    let getRandomMsg users clientUserInfo = 
-        let num = rnd.Next(0, 10)
-        let res = 
-            let probs = 
-                if clientUserInfo.subscribersNum >= subscribersCountReach
-                    then [5;4;1]
-                    else [4;4;2]
-            let dict = Array.init 3 (fun i -> 
-                let baseValue = if i = 0 then 0 else probs.GetSlice(Some 0, Some (i - 1)) |> List.sum
-                let count = probs.[i]
-                initWithBase baseValue count i) |> Array.concat |> dict
-            dict.[num]
-
-        match res with
-        | 0 -> // send tweet
-            let text = getRandomTweetText ()
-            SendTweet(text)
-        | 1 -> // forward tweet
-            if clientUserInfo.receivedTweetIDs.Count = 0
-                then
-                    let text = getRandomTweetText ()
-                    SendTweet(text)
-                else
-                    let rndTweet = clientUserInfo.receivedTweetIDs.Item(rnd.Next(0, clientUserInfo.receivedTweetIDs.Count))
-                    ForwardTweet(rndTweet)
-        | 2 -> // subscription
-            let subscriptionNum = rnd.Next(0, 3) // tag, mention or fromUser
-            let subscription = 
-                match subscriptionNum with 
-                | 0 -> Hashtag(getRndTag())
-                | 1 -> Mention(getRndUser())
-                | 2 -> Sender(getRndUser())
-                        
-            let subscriptionType = RealtimeTweets
-
-            UserRequest.Subscription(subscription, subscriptionType)
-
-    let client = System.create "client" <| Configuration.parse """
-    akka {
-        actor.provider = remote
-        remote.dot-netty.tcp {
-            hostname = localhost
-            port = 0
-        }
-    }
-"""    
-    let supervisor = typed <| client.ActorSelection("akka.tcp://server@localhost:4500/user/supervisor").ResolveOne(TimeSpan.FromSeconds(2.0)).GetAwaiter().GetResult()
-    
-    let users = Array.init users (fun i -> 
-        let guidList = new System.Collections.Generic.List<Guid>()
-        let data = {subscribersNum = 0; receivedTweetIDs = guidList; lastActivity = None; activitiesCount = 0; finishedActivities = 0; }
-        let actor = spawnAnonymous client <| props (clientActor logReceivedMessages data (sprintf "%s%i" userNameBeginning i) "123456" supervisor)
-        (actor, data))
-
-    let watch = System.Diagnostics.Stopwatch.StartNew()
-
-    printfn "---CREATING ACCOUNTS---"
-
-    ///////// waiting
-    while not <| Array.forall (fun (_, i) -> i.activitiesCount = i.finishedActivities) users do
-        System.Threading.Thread.Sleep(actionPause)
-    ///////// waiting
-
-    printfn "---LOGGING IN---"
-
-    for (actor, _) in users do
-        actor <! UserRequest(Login("123456"))
-
-    ///////// waiting
-    while not <| Array.forall (fun (_, i) -> i.activitiesCount = i.finishedActivities) users do
-        System.Threading.Thread.Sleep(actionPause)
-    ///////// waiting
-
-
-    let startTime = DateTime.UtcNow
-    while (DateTime.UtcNow - startTime) < connectionTimeMinutes do
-        let userIndx = rnd.Next(0, users.Length)
-        let (rndActor, rndUserInfo) = users.[userIndx]
-        let rndAction = getRandomMsg users rndUserInfo
-        match rndAction with 
-        | UserRequest.Subscription(Sender name, _) -> 
-            let userIndx = name.Remove(0, userNameBeginning.Length) |> int
-            let (actor, user) = users.[userIndx]
-            user.subscribersNum <- user.subscribersNum + 1
-            if user.subscribersNum = subscribersCountReach then
-                if logReceivedMessages then Console.WriteLine "reached subscribersCountReach"
-        | _ -> ()
-
-        if logReceivedMessages then Console.WriteLine(sprintf "Performing random action on the user: %i; Action: %A" userIndx rndAction)
-        rndActor <! UserRequest(rndAction)
-        //System.Threading.Thread.Sleep(actionPause)
-
-    ///////// waiting
-    while not <| Array.forall (fun (_, i) -> i.activitiesCount = i.finishedActivities) users do
-        System.Threading.Thread.Sleep(actionPause)
-    ///////// waiting
-
-    watch.Stop()
-
-    Console.WriteLine("---Finished processing---")
-
-    let getMsg = sprintf "Total number of requests: %i, Time spent: %s, average processing time: %f ms"
-    let totalRequests = Array.sumBy (fun (_, i) -> i.activitiesCount) users
-    let totalTime = watch.Elapsed //- (TimeSpan.FromMilliseconds(float <| actionPause * totalRequests))
-    let avg = totalTime.TotalMilliseconds / float totalRequests
-
-    Console.WriteLine(getMsg totalRequests (totalTime.ToString()) avg)
-
-    Console.ReadLine() |> ignore
-
-    // get historical in console at the end
-
-    Console.ReadLine() |> ignore
-    printfn "Hello World from F#!"
     Console.ReadLine () |> ignore
     0 // return an integer exit code

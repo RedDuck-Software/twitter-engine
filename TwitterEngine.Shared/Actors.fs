@@ -7,8 +7,6 @@ open WebSharper.AspNetCore.WebSocket.Server
 
 module Actors =
     let userActor sendToClient account (mailBox:Actor<UserRequest>) =
-        sendToClient <| UserRef(mailBox.Self)
-
         let rec impl (account, knownTweets) = actor {
             let! data = mailBox.Receive()
            
@@ -150,9 +148,6 @@ module Actors =
 
             let userState = 
                 match msg with
-                | UserRef ref ->
-                    finishActivity clientInfo
-                    { userState with serverUserRef = Some(ref) }
                 | OperationResult res ->
                     match res with
                     | Success -> log $"{username}: Successful operation"
@@ -164,13 +159,6 @@ module Actors =
                     log str
                     clientInfo.receivedTweetIDs.Add(tweet.id)
                     { userState with receivedTweets = tweet::userState.receivedTweets }
-                | ServerToClientResponse.UserRequest request -> 
-                    match userState.serverUserRef with 
-                    | Some ref -> 
-                        ref <! request
-                        addActivity clientInfo
-                    | None _ -> printfn "None ref !"
-                    userState
 
             return! impl userState
         }
