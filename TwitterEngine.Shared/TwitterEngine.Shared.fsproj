@@ -12,6 +12,8 @@
     <Compile Include="Server.fs" />
   </ItemGroup>
 
+  <ItemGroup />
+
   <ItemGroup>
     <PackageReference Include="Akka.Logger.Serilog" Version="1.4.11" />
     <PackageReference Include="Akkling" Version="0.10.0" />

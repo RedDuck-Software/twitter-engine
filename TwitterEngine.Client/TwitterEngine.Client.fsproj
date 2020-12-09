@@ -13,6 +13,7 @@
     <PackageReference Include="Akka.Remote" Version="1.4.12" />
     <PackageReference Include="Akka.Serialization.Hyperion" Version="1.4.12" />
     <PackageReference Include="Akkling" Version="0.10.0" />
+    <PackageReference Include="WebsocketClientLite.PCL" Version="6.2.0" />
   </ItemGroup>
 
   <ItemGroup>

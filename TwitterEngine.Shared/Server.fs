@@ -24,6 +24,24 @@ module Server =
 
         sessionId
 
+    let sessionId = setupLogging ()
+    let system = System.create "server" <| Configuration.parse @"akka {
+    loggers=[""Akka.Logger.Serilog.SerilogLogger, Akka.Logger.Serilog""]
+    stdout-loglevel = DEBUG
+    loglevel = DEBUG
+    log-config-on-start = on
+    actor {
+        debug {
+              receive = on
+              autoreceive = on
+              lifecycle = on
+              event-stream = on
+              unhandled = on
+        }
+    }
+    }"
+    let supervisorActorRef = spawn system "supervisor" <| props(TwitterEngine.Shared.Actors.superviserActor)
+    
     let Start : Agent<S2CMessage, C2SMessage> =
         /// print to debug output and stdout
         let dprintfn x =
@@ -31,10 +49,6 @@ module Server =
                 System.Diagnostics.Debug.WriteLine s
                 stdout.WriteLine s
             ) x
-
-        use system = System.create "server" <| Configuration.load()
-        let supervisorActorRef = spawn system "supervisor" <| props(TwitterEngine.Shared.Actors.superviserActor)
-        let sessionId = setupLogging ()
 
         fun client -> async {
             let clientIp = client.Connection.Context.Connection.RemoteIpAddress.ToString()
@@ -50,7 +64,7 @@ module Server =
                         let supervisorRequest = SuperviserRequest.UserRequest(req)
                         supervisorActorRef <! supervisorRequest
                     | TestRequest test ->
-                        client.Post <| S2CMessage.OperationResult(OperationStatusResponse.Success)
+                        client.Post <| S2CMessage.OperationResult(OperationStatusResponse.Error("It's not an error, just a test:)"))
                 | Message.Error a -> 
                     dprintfn "Exception occurred: %O" a
                 | Close -> 
