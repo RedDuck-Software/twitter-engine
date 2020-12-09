@@ -6,8 +6,8 @@ open WebSharper
 
 type AccountCredentials = {
     username : string;
-    passwordHash : byte[];
-    salt : byte[];
+//    passwordHash : byte[];
+//    salt : byte[];
 }
 
 type Account = {
