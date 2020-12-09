@@ -107,7 +107,9 @@ module Actors =
                         let userActor = userActor sendToUser account |> props |> spawn mailBox account.username
                         printfn "signed up %s" account.username
                         userActor
-                    | _ -> raise <| invalidOp("already signed up")
+                    | a -> 
+                        printfn "Already signed up: %s" creds.username
+                        typed a
                 ()
             | SuperviserRequest.UserRequest (ur, from) -> 
                 let userActor = typed <| mailBox.UntypedContext.Child(from)
