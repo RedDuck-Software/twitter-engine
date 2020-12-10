@@ -91,9 +91,13 @@ let runWebSocketClient url = async {
             then 
                 printfn "%s" text
             else
-                let parsed = parseRequest prompted
-                let c2sRequest = ClientToServerRequest.UserRequest(parsed, username)
-                do! sendRequest c2sRequest
+                    try 
+                        let parsed = parseRequest prompted
+                        let c2sRequest = ClientToServerRequest.UserRequest(parsed, username)
+                        do! sendRequest c2sRequest
+                    with 
+                    | ex -> 
+                        printfn "Exception. Message: %s; Type:%s" ex.Message (ex.GetType().Name)
 
     return websocketClient
 }
